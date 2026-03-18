@@ -1,88 +1,71 @@
-# AgentCanvas UI (或者 NexusBoard)
+# AgentCanvas UI (NexusBoard)
 
 > **核心理念：“抛弃传统对话框（Post-Chat UI），画布即系统，节点即组件，AI 是调度员”。**
 
-本项目旨在彻底替代局限性极强的现有 Chat 交互方式。二维的无界画布（类似 Figma、Miro、Notion Calendar 的融合体）不仅是通向未来三维“空间计算（Spatial Computing）”的完美过渡，而且天然打破了传统对话流“从上到下线性滚动、信息被迅速淹没”的束缚，极度适合展示和操作 AI 复杂、多维的生成结果。
+本项目旨在彻底替代局限性极强的现有 Chat 交互方式。二维的无界画布（类似 Figma、Miro、Notion Calendar 的融合体）不仅是通向未来三维“空间计算（Spatial Computing）”的完美过渡，而且天然打破了传统对话流“从上到下线性滚动、信息被迅速淹没”的束缚。
 
 ---
 
-## 🌟 核心交互流：未来感的极致体现
+## 🛠 当前开发进度 (Roadmap)
 
-想象一下用户进入画布的第一体验：
-
-1. **全局意图捕获（Global Intent Capture）**
-   - 页面底部固定着一个极简的**全能输入坞（Dock Input）**，支持上传图片、文件或输入自然语言。
-   - **智能剪贴板监听**：自动识别剪贴板中的内容（截图、JSON、大量文本），并提示用户是否直接作为当前对话的上下文。
-2. **具象化思考（Visualized Reasoning）**
-   - 用户发送指令后，底部输入坞发光，紧接着向画布中央伸出一条虚线连线，连接到一个正在生成的“骨架屏节点（Skeleton Node）”。连线上漂浮着小字：“正在调用大模型...”、“正在解析数据结构...”。
-3. **动态繁衍（Generative Spawning）**
-   - 骨架屏节点瞬间“炸开”，变为实际的 UI 组件节点排列在画布上：
-     - **节点 A**：Markdown 总结卡片
-     - **节点 B**：高度交互的数据表格（Data Grid）
-     - **节点 C**：基于对比数据的雷达图（Radar Chart）
-4. **零摩擦空间交互（Zero-Friction Spatial Interaction）**
-   - 除了最开始的意图输入外，用户后续**几乎不需要再打字输入 Prompt**。
-   - 所有生成的节点都会自带“AI 建议操作区”，用户只需**一键点击**（如：[生成雷达图]、[总结核心观点]），便会立马分裂出新的下级节点。
-   - **智能连线流**：自由拖拽节点，例如将“节点 B（表格）”与画布原有的“节点 D（导出按钮）”连线，AI 瞬间理解意图，自动将表格数据导出为 Excel。全程只需“点点连连”。
+- [x] **基础架构**：Next.js 15 (App Router) + Tailwind v4 + React Flow 无界画布。
+- [x] **数据持久化**：集成 IndexedDB (idb) 实现本地会话存储，支持 1.5s 智能防抖保存。
+- [x] **多模型网关**：内置 Serverless Proxy，支持 OpenAI、Gemini、Ollama 等 API 聚合切换。
+- [x] **节点交互增强** (NEW):
+  - **双格式复制**：支持一键导出 Markdown 原文或清洗后的纯文本。
+  - **物理级自由缩放**：高灵敏度感应区 + 视觉折角引导，支持非等比自由拉伸。
+  - **节点内推导**：每个节点自带局部输入框，支持基于当前上下文的零摩擦追问。
+- [x] **AI 智能建议**：基于内容自动生成 Suggestion Chips，点击即连线分裂新节点。
+- [x] **数据展现**：支持 GFM 表格高精渲染、代码块高亮及内容复制。
+- [ ] **多模态增强** (NEXT): 剪贴板自动识别（图片/JSON/代码片段）。
+- [ ] **实时流式传输** (NEXT): 优化 SSE 流式响应，实现更平滑的打字机效果。
+- [ ] **高级组件节点**: 引入基于 ECharts 的动态图表节点与数据看板。
 
 ---
 
-## 🧩 底层组件架构 (Components)
+## 🌟 核心特性说明
 
-本项目将由以下几类全新的**“空间态组件”**构成：
+### 1. 零摩擦追问 (Local-In-Node Follow-up)
+传统的对话需要回到屏幕底部的全局输入框。在 NexusBoard 中，每个生成的 Insight 节点底部都自带一个**局部输入框**。当您在特定节点输入追问时，系统会自动携带该节点的上下文发送给 AI，并生动地分裂出一个子节点。
 
-### 1. 基建层 (Infrastructure Components)
-- **`<InfiniteCanvas />` (无界画布引擎)**
-  - 底层容器。支持鼠标滚轮缩放（Zoom）、中键平移（Pan）、带有吸附力（Snap to grid）的背景网格。
-  - *技术栈建议*：基于开源的 `React Flow` 或 `Vue Flow` 进行二次封装，定制极简且充满未来感的 UI。
-- **`<ConnectionLink />` (语义连线)**
-  - 带有流光特效（流动的小圆点）的贝塞尔曲线，代表数据或逻辑的流向与关联。
-- **`<SessionSidebar />` (本地化会话抽屉)**
-  - 替代传统的聊天记录侧边栏。支持开启“全新的分析画布（New Canvas）”，并在不同的历史图谱之间无缝切换。**核心亮点：所有的会话队列及其节点数据，均通过浏览器的 IndexedDB 进行纯本地存储（Local First）**，保障用户数据隐私的安全与极速加载。
+### 2. 物理级缩放系统 (High-Precision Resizer)
+为了适配复杂的分析结果（如超长代码或大型对比表格），我们实现了一套极其灵敏的缩放系统：
+- **巨型感应区**：角落具备 48px 的隐性触控区，盲操即可触发。
+- **自由比例**：不再锁定长宽比，用户可根据内容自由调整为“横向对比模式”或“纵向阅读模式”。
 
-### 2. AI 交互层 (Agentic Components)
-- **`<DockInput />` (底部全局输入坞)**
-  - 固定于页面底部的核心交互器，替代传统的散落 input。支持自然语言、点击上传/拖拽文件图片，并内置强大的“剪贴板自动读取”监听机制。
-- **`<ModelSettingsPanel />` (大模型与 API 配置中心)**
-  - 灵活的多模型管理模块。支持配置云端大模型（Gemini、OpenAI 格式）以及本地模型（Ollama、llama.cpp、vLLM）；具备自动向 API 请求并拉取“可用模型列表（Model List）”的能力。
-- **`<ThinkingAura />` (AI 思考状态场)**
-  - 包裹等待 AI 数据的组件。采用边缘泛着渐变流光的 CSS 效果，或打字机光标游走效果，替代传统的 Spin 转圈。
-
-### 3. 动态渲染层 (Generative Widget Components)
-这是组件库的核心，采用 **Schema-Driven（数据模式驱动）** 设计，根据 AI 输出的特定格式 JSON 完美渲染。
-- **`<WidgetContainer />` (通用节点外壳)**
-  - 所有生成内容的包裹器。自带拖拽把手（Drag Handle）、缩放控制（Resize）、“让 AI 重新生成（Regenerate）”按钮及“钉在画布（Pin）”按钮。
-- **`<SmartTable />` (智能表格节点)**
-  - 接收 AI 生成的 `columns` 和 `rows` 自动渲染。支持用户在表格右键：“让 AI 扩写这一行的数据”。
-- **`<MarkdownCard />` (流式文档节点)**
-  - 优雅处理断断续续的文本流（Streaming Server-Sent Events），自动高亮代码块。
-- **`<ActionGroup />` (零摩擦操作按钮组)**
-  - 核心体验组件！根据 AI 对当前计算结果的感知，在节点底部动态生成推荐的“下一步操作”（Suggestion Chips），比如 `[生成可视化图表]`, `[发送总结邮件]`, `[翻译为英文]`。用户**全程无需二次输入**，只需一键点击，系统就会自动为你延伸出下一个操作节点。
+### 3. 本地优先 (Local-First Privacy)
+所有画布节点、连线关系、系统配置均存储在用户浏览器的 **IndexedDB** 中。这意味着即使刷新页面或在断网环境下，您的思维导图也绝对安全且秒速加载。
 
 ---
 
-## 🚀 落地开发的第一阶段（MVP 版本）
+## 🧩 技术栈与架构 (Tech Stack)
 
-**🎯 目标：实现一个“AI 拖拽分析器”**
-
-1. **第一步：搭台子 (Foundation)**
-   - **采用 Next.js (App Router)** 作为全栈底层框架，结合 Tailwind 跑通基础的无界画布（拖拽 + 平移功能）以及底部的 `<DockInput />`。
-   - 接入 IndexedDB 实现完全本地的数据持久化，完成 `<SessionSidebar />` 历史会话队列的新建与快速读取。
-2. **第二步：接大脑 (Integration & Serverless Proxy)**
-   - 利用 **Next.js 的 API Routes 做中转代理**。这意味着用户无需在本地忍受复杂的魔法上网配置，即可直连或通过 Vercel 轻松桥接云端大模型（如 OpenAI、Gemini）。
-   - 实现 `<ModelSettingsPanel />` 组件，打通云端与本地开源大模型（Ollama 等），实现可用模型列表的动态切换。
-3. **第三步：意图感知 (Intent Sensing)**
-   - 给底部输入坞加上剪贴板监听（Clipboard API），能智能解析用户刚刚复制的图片或文本。
-4. **第四步：跑通闭环 (The Loop)**
-   - 用户一键应用剪贴板数据或直接输入文本。
-   - 后台 Prompt 告诉 AI 解析输入，严格输出对应的 JSON Schema（例如 `{ type: 'timeline', data: [...] }`）。
-   - 前端根据 `type` 动态生成对应的节点（如 `<TimelineNode />`），并利用连线将其动态连接到画布中心。
+- **Frontend**: React 19, Next.js 15, TypeScript.
+- **Styling**: Tailwind CSS v4 (基于 `@tailwindcss/postcss`), Lucide Icons.
+- **Canvas Engine**: React Flow (自定义 NodeTypes & EdgeTypes).
+- **Markdown**: React-Markdown + Remark-GFM (表格支持).
+- **Persistence**: IndexedDB (使用 `idb` 库封装).
+- **AI Integration**: 自研 Multi-Provider Proxy (支持流式输出)。
 
 ---
 
-## 💡 为什么需要 AgentCanvas 替代 Chat UI？
+## 🚀 快速启动
 
-1. **终结流水账式的 Chat UI (The Post-Chat Era)**：现有的对话框（如 ChatGPT 界面）本质是线性流水账。当 AI 一次性生成图、文、表、代码等多模态数据时，对话流根本塞不下，也无法对旧结果进行横向对比和深度二次编辑。画布界面是彻底解放非线性思考的**唯一解**。
-2. **真正的思维飞轮 (Thinking Flywheel)**：摆脱了传统交互中“不断打字重写 Prompt”的死循环。改成**“首次意图输入 + 后续无限延展点击”**，大大降低了人脑的认知负荷，实现零摩擦的信息推演。
-3. **为“空间计算”打底**：Canvas 的底层坐标系（x, y）只需加入 z 轴，便可无缝迁移至三维操作系统界面。
-4. **跨维度的产品展现形式**：告别千篇一律的套壳聊天 UI，让卡片在画布上自由生长、连接。这不仅是一个更强的生产力工具，更是展现顶级产品感知和技术边界的最佳载体。
+1. **安装依赖**:
+   ```bash
+   npm install
+   ```
+2. **启动开发服务器**:
+   ```bash
+   npm run dev
+   ```
+3. **配置 API**:
+   在侧边栏的“设置”面板中输入您的 OpenAI/Gemini API Key 即可开始。
+
+---
+
+## 💡 为什么需要 AgentCanvas？
+
+1. **终结流水账交互**：线性对话流无法承载复杂的多维推导，画布是解放非线性思考的唯一解。
+2. **真正的思维飞轮**：从“打字重写 Prompt”进化为“一键点击建议 + 局部精准追问”。
+3. **为空间计算打底**：Canvas 的 (x, y) 坐标系是通向 AR/VR 空间 UI 的桥头堡。
