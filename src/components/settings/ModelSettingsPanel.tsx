@@ -49,52 +49,26 @@ export default function ModelSettingsPanel() {
     setIsFetching(true);
     setFetchError(null);
     try {
-      let url = "";
-      const headers: Record<string, string> = {
-        'Accept': 'application/json',
-      };
-
-      // 1. Determine URL and Auth method based on provider
-      if (config.provider === 'ollama') {
-        url = `${config.baseUrl}/tags`;
-      } else if (config.provider === 'gemini') {
-        // Gemini uses API key in URL parameter
-        const baseUrl = config.baseUrl.replace(/\/$/, '');
-        url = `${baseUrl}/models?key=${config.apiKey}`;
-      } else {
-        // OpenAI or Custom: Use Bearer Token
-        const baseUrl = config.baseUrl.replace(/\/$/, '');
-        url = `${baseUrl}/models`;
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      }
-
-      console.log(`Fetching models from: ${url}`);
-      const response = await fetch(url, { headers, method: 'GET' });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
-      }
+      const response = await fetch('/api/models', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ config })
+      });
       
       const data = await response.json();
-      let models: string[] = [];
-
-      // 2. Parse different data formats
-      if (config.provider === 'ollama') {
-        models = data.models?.map((m: any) => m.name) || [];
-      } else if (config.provider === 'gemini') {
-        // Gemini returns models array directly or inside models property
-        const list = data.models || data;
-        models = Array.isArray(list) ? list.map((m: any) => m.name.replace('models/', '')) : [];
-      } else {
-        // Standard OpenAI format: { data: [{ id: 'gpt-4' }, ...] }
-        models = data.data?.map((m: any) => m.id) || [];
+      
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
       }
+      
+      const models = data.models || [];
       
       if (models.length === 0) {
         setFetchError("NO MODELS FOUND IN RESPONSE");
       } else {
-        setAvailableModels(models.sort());
+        setAvailableModels(models);
       }
     } catch (err: any) {
       console.error('Fetch error:', err);

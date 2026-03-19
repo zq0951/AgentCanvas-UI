@@ -15,6 +15,22 @@
 .nexus-force-light {
   background-color: white !important;
   color: black !important;
+  /* 修复缩放时的文字模糊 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transform: translateZ(0); /* 开启硬件加速但保持清晰 */
+}
+
+/* 针对 Markdown 内容的特殊优化 */
+.prose {
+  font-variant-ligatures: none;
+  font-feature-settings: "kern" 1;
+}
+
+/* 移除可能导致文字渲染降级的全局 will-change */
+.react-flow__node {
+  will-change: auto !important;
 }
 
 .nexus-force-light .prose * {

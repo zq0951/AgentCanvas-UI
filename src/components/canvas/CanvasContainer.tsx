@@ -10,12 +10,12 @@ import 'reactflow/dist/style.css';
 import { useCanvas } from '@/contexts/CanvasContext';
 import MarkdownNode from './nodes/MarkdownNode';
 
+const nodeTypes = {
+  markdown: MarkdownNode,
+};
+
 export default function CanvasContainer() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useCanvas();
-
-  const nodeTypes = useMemo(() => ({
-    markdown: MarkdownNode,
-  }), []);
 
   return (
     <div className="w-full h-full">
@@ -26,9 +26,9 @@ export default function CanvasContainer() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        // IMPORTANT: Only allow dragging via the specific handle class
-        dragHandle=".custom-drag-handle"
-        fitView
+        minZoom={0.05}
+        maxZoom={4}
+        onlyRenderVisibleElements={false}
       >
         <Background 
           variant={BackgroundVariant.Dots} 
@@ -36,7 +36,7 @@ export default function CanvasContainer() {
           size={1} 
           color="rgba(0,0,0,0.1)" 
         />
-        <Controls showInteractive={false} className="!bg-white !border-slate-200" />
+        <Controls position="bottom-right" className="!bg-white !border-slate-200 !shadow-2xl !z-[999] pointer-events-auto" />
       </ReactFlow>
     </div>
   );
