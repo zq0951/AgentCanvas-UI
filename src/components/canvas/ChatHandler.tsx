@@ -5,63 +5,96 @@ import { useCanvas } from '@/contexts/CanvasContext';
 import { useReactFlow } from 'reactflow';
 
 export default function ChatHandler() {
-  const { registerSendMessageHandler, updateNodeData, addNode, connectNodes, selectNode, nodes } = useCanvas();
-  const { setCenter, fitView, getNodes } = useReactFlow();
+  const { registerSendMessageHandler, updateNodeData, addNode, connectNodes, selectNode, nodes, sessionId } = useCanvas();
+  const { setCenter, fitView, getViewport } = useReactFlow();
   const nodesRef = useRef(nodes);
+  const lastCreatedNodeIdRef = useRef<string | null>(null);
+  const isGeneratingRef = useRef(false);
 
   useEffect(() => {
     nodesRef.current = nodes;
+
+    // 监听新节点产生并执行平滑移动
+    if (lastCreatedNodeIdRef.current) {
+      const newNode = nodes.find(n => n.id === lastCreatedNodeIdRef.current);
+      if (newNode) {
+        const cardWidth = newNode.style?.width ? Number(newNode.style.width) : 800;
+        const cardHeight = newNode.style?.height ? Number(newNode.style.height) : 600;
+        const centerX = newNode.position.x + cardWidth / 2;
+        const centerY = newNode.position.y + cardHeight / 2;
+        
+        const currentZoom = getViewport().zoom;
+        const targetZoom = currentZoom < 0.5 ? 0.8 : currentZoom;
+        
+        setCenter(centerX, centerY, { zoom: targetZoom, duration: 600 });
+        lastCreatedNodeIdRef.current = null; // 消费掉标记，避免重复移动
+      }
+    }
   }, [nodes]);
+
+  // 当切换历史会话 (sessionId 变化) 时，自动调整视口以显示所有卡片
+  useEffect(() => {
+    // 如果是用户正在生成新卡片导致的 sessionId 变化（即从 null 变为第一个 ID），则不触发 fitView
+    if (isGeneratingRef.current) return;
+
+    if (nodes.length > 0) {
+      const timer = setTimeout(() => {
+        fitView({ padding: 0.2, duration: 800 });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     registerSendMessageHandler(async (prompt, parentId, attachments) => {
       const config = JSON.parse(localStorage.getItem('nexus-model-config') || '{}');
+      isGeneratingRef.current = true;
       
       let targetNodeId: string;
       let targetPosition = { x: 400, y: 300 };
       
-      // Node Creation Logic
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // 宽度占据视口 80%，在 800px 到 1600px 之间波动
+      const cardWidth = Math.min(Math.max(viewportWidth * 0.8, 800), 1600);
+      // 高度占据视口 80%，在 600px 到 1000px 之间波动
+      const cardHeight = Math.min(Math.max(viewportHeight * 0.8, 600), 1000);
+
       if (parentId === 'root' || !parentId) {
         targetNodeId = `node-${Date.now()}`;
-        addNode({
-          id: targetNodeId,
-          type: 'markdown',
-          position: targetPosition,
-          data: { prompt, text: '', isGenerating: true },
-          style: { width: 600, height: 500 },
-          selected: true
-        });
+        const { x, y, zoom } = getViewport();
+        const flowX = (window.innerWidth / 2 - x) / zoom;
+        const flowY = (window.innerHeight / 2 - y) / zoom;
+        targetPosition = { x: flowX - cardWidth / 2, y: flowY - cardHeight / 2 };
       } else {
         const parentNode = nodesRef.current.find(n => n.id === parentId);
         targetNodeId = `node-${Date.now()}`;
         const px = parentNode?.position.x ?? 400;
         const py = parentNode?.position.y ?? 300;
-        targetPosition = { x: px, y: py + 600 };
-        
-        addNode({
-          id: targetNodeId,
-          type: 'markdown',
-          position: targetPosition,
-          data: { prompt, text: '', isGenerating: true },
-          style: { width: 600, height: 500 },
-          selected: true
-        });
-        connectNodes(parentId, targetNodeId);
+        const parentWidth = parentNode?.style?.width ? Number(parentNode.style.width) : 600;
+        const parentHeight = parentNode?.style?.height ? Number(parentNode.style.height) : 500;
+        targetPosition = { 
+          x: px + (parentWidth / 2) - (cardWidth / 2), 
+          y: py + parentHeight + 150 
+        };
       }
 
-      // 核心移动逻辑：使用 setCenter 进行纯坐标平移
-      // 这种方式不依赖 DOM 渲染和 fitView 内部测量，100% 可靠
-      const moveToNode = () => {
-        // 计算卡片中心点 (600x500 尺寸)
-        const centerX = targetPosition.x + 300;
-        const centerY = targetPosition.y + 250;
-        
-        // 平滑移动视口
-        setCenter(centerX, centerY, { zoom: 0.55, duration: 1000 });
-      };
+      // 记录新节点 ID，触发上面的 useEffect 移动逻辑
+      lastCreatedNodeIdRef.current = targetNodeId;
 
-      // 稍微给一点延迟 (200ms) 让 React Flow 内部坐标系同步
-      setTimeout(moveToNode, 200);
+      addNode({
+        id: targetNodeId,
+        type: 'markdown',
+        position: targetPosition,
+        data: { prompt, text: '', isGenerating: true },
+        style: { width: cardWidth, height: cardHeight },
+        selected: true
+      });
+
+      if (parentId && parentId !== 'root') {
+        connectNodes(parentId, targetNodeId);
+      }
 
       try {
         const response = await fetch('/api/chat', {

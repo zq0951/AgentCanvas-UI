@@ -36,7 +36,7 @@ export default function CanvasContainer() {
           size={1} 
           color="rgba(0,0,0,0.1)" 
         />
-        <Controls position="bottom-right" className="!bg-white !border-slate-200 !shadow-2xl !z-[999] pointer-events-auto" />
+        <Controls position="bottom-right" showInteractive={false} className="!bg-white !border-slate-200 !shadow-2xl !z-[999] pointer-events-auto" />
       </ReactFlow>
     </div>
   );
