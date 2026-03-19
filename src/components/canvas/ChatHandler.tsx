@@ -108,7 +108,8 @@ export default function ChatHandler() {
             }],
             model: config.model,
             apiKey: config.apiKey,
-            provider: config.provider
+            provider: config.provider,
+            baseUrl: config.baseUrl
           })
         });
 

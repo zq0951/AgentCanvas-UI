@@ -10,6 +10,12 @@ export async function POST(req: Request) {
     }
 
     const { provider, apiKey, baseUrl } = config;
+    const isLocalProvider = provider === 'ollama' || provider === 'custom';
+    
+    if (!apiKey && !isLocalProvider) {
+      return NextResponse.json({ error: 'API Key is required for this provider' }, { status: 400 });
+    }
+
     let url = "";
     const headers: Record<string, string> = {
       'Accept': 'application/json',

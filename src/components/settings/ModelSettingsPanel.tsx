@@ -41,7 +41,8 @@ export default function ModelSettingsPanel() {
   };
 
   const fetchModels = async () => {
-    if (!config.apiKey && config.provider !== 'ollama') {
+    const isLocalProvider = config.provider === 'ollama' || config.provider === 'custom';
+    if (!config.apiKey && !isLocalProvider) {
       setFetchError("API KEY REQUIRED FOR FETCH");
       return;
     }
@@ -92,7 +93,7 @@ export default function ModelSettingsPanel() {
               onClick={() => {
                 const defaults: Record<string, Partial<ModelConfig>> = {
                   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
-                  gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-1.5-pro' },
+                  gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-3-flash-preview' },
                   ollama: { baseUrl: 'http://localhost:11434/api', model: 'llama3' },
                   custom: { baseUrl: '', model: '' }
                 };
@@ -126,7 +127,7 @@ export default function ModelSettingsPanel() {
             type="password"
             value={config.apiKey}
             onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-            placeholder={config.provider === 'ollama' ? 'Not required for local' : 'Paste your API key here'}
+            placeholder={(config.provider === 'ollama' || config.provider === 'custom') ? 'Not required for local/custom' : 'Paste your API key here'}
             className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all shadow-sm"
           />
         </div>

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model, apiKey, provider } = await req.json();
+    const { messages, model, apiKey, provider, baseUrl: customBaseUrl } = await req.json();
 
-    if (!apiKey) {
+    const isLocalProvider = provider === 'ollama' || provider === 'custom';
+    if (!apiKey && !isLocalProvider) {
       return NextResponse.json({ error: 'API Key is required' }, { status: 400 });
     }
 
@@ -14,8 +15,9 @@ The labels should be short, actionable, and progress the current concept.`;
 
     // 1. 处理 Google Gemini 逻辑
     if (provider === 'gemini') {
-      const geminiModel = model || 'gemini-1.5-pro';
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?key=${apiKey}`;
+      const geminiModel = model || 'gemini-3-flash-preview';
+      const base = (customBaseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
+      const url = `${base}/models/${geminiModel}:streamGenerateContent?key=${apiKey}`;
 
       const contents = messages.map((msg: any) => {
         const parts: any[] = [{ text: msg.content }];
@@ -47,22 +49,41 @@ The labels should be short, actionable, and progress the current concept.`;
       });
 
       if (!response.ok) {
-        const err = await response.json();
+        const err = await response.json().catch(() => ({ error: { message: 'Gemini API Error' } }));
         return NextResponse.json({ error: err.error?.message || 'Gemini API Error' }, { status: response.status });
       }
 
       return new NextResponse(response.body);
     }
 
-    // 2. OpenAI 兼容
-    const baseUrl = provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+    // 2. OpenAI 兼容逻辑 (包括 Ollama, DeepSeek, Custom)
+    let finalBaseUrl = "";
+    
+    if (customBaseUrl) {
+      // 如果提供了自定义 URL，确保它以 /chat/completions 结尾（如果没写的话）
+      finalBaseUrl = customBaseUrl.replace(/\/$/, '');
+      if (!finalBaseUrl.endsWith('/chat/completions')) {
+        // 兼容 Ollama 的 OpenAI 格式
+        finalBaseUrl = `${finalBaseUrl}/chat/completions`;
+      }
+    } else {
+      // 默认官方地址
+      finalBaseUrl = provider === 'deepseek' 
+        ? 'https://api.deepseek.com/chat/completions' 
+        : 'https://api.openai.com/v1/chat/completions';
+    }
 
-    const response = await fetch(baseUrl, {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(finalBaseUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: model || 'gpt-4o',
         messages: [
@@ -72,6 +93,11 @@ The labels should be short, actionable, and progress the current concept.`;
         stream: true,
       }),
     });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: { message: 'API Error' } }));
+      return NextResponse.json({ error: err.error?.message || `API returned ${response.status}` }, { status: response.status });
+    }
 
     return new NextResponse(response.body);
 
