@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Globe, Cpu, Key, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Save, Globe, Cpu, Key, CheckCircle2, RefreshCw, AlertCircle, Sparkles } from 'lucide-react';
 
 interface ModelConfig {
   provider: 'openai' | 'gemini' | 'ollama' | 'custom';
   apiKey: string;
   baseUrl: string;
   model: string;
+  systemPrompt?: string;
+  zeroFrictionCount?: number;
+  autoReadClipboard?: boolean;
 }
 
 export default function ModelSettingsPanel() {
@@ -16,6 +19,9 @@ export default function ModelSettingsPanel() {
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o',
+    systemPrompt: '',
+    zeroFrictionCount: 3,
+    autoReadClipboard: false,
   });
   
   const [isSaved, setIsSaved] = useState(false);
@@ -27,7 +33,13 @@ export default function ModelSettingsPanel() {
     const saved = localStorage.getItem('nexus-model-config');
     if (saved) {
       try {
-        setConfig(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setConfig({
+          ...parsed,
+          systemPrompt: parsed.systemPrompt ?? '',
+          zeroFrictionCount: parsed.zeroFrictionCount ?? 3,
+          autoReadClipboard: parsed.autoReadClipboard ?? false,
+        });
       } catch (e) {
         console.error('Failed to parse config');
       }
@@ -202,6 +214,57 @@ export default function ModelSettingsPanel() {
               <span className="text-[10px] font-bold uppercase tracking-tight leading-none">{fetchError}</span>
             </div>
           )}
+        </div>
+
+        {/* System Prompt */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-tight flex items-center gap-2">
+            <Sparkles size={12} />
+            System Prompt
+          </label>
+          <textarea 
+            value={config.systemPrompt}
+            onChange={(e) => setConfig({ ...config, systemPrompt: e.target.value })}
+            placeholder="You are a helpful assistant..."
+            rows={3}
+            className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all shadow-sm resize-none"
+          />
+        </div>
+
+        {/* Advanced Settings */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-tight flex items-center gap-2">
+              Zero-Friction Buttons
+            </label>
+            <input 
+              type="number"
+              min={0}
+              max={10}
+              value={config.zeroFrictionCount}
+              onChange={(e) => setConfig({ ...config, zeroFrictionCount: parseInt(e.target.value) || 0 })}
+              className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 font-bold focus:border-slate-900 outline-none transition-all shadow-sm"
+            />
+          </div>
+          
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-tight flex items-center gap-2">
+              Auto Clipboard
+            </label>
+            <button
+              onClick={() => setConfig({ ...config, autoReadClipboard: !config.autoReadClipboard })}
+              className={`w-full px-4 py-2 rounded-xl border text-sm font-bold transition-all flex items-center justify-between ${
+                config.autoReadClipboard 
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700' 
+                  : 'border-slate-200 bg-white text-slate-400'
+              }`}
+            >
+              <span>{config.autoReadClipboard ? 'ENABLED' : 'DISABLED'}</span>
+              <div className={`w-8 h-4 rounded-full relative transition-colors ${config.autoReadClipboard ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${config.autoReadClipboard ? 'left-4.5' : 'left-0.5'}`} style={{ left: config.autoReadClipboard ? '1.125rem' : '0.125rem' }} />
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 

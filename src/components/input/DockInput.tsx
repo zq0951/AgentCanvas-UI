@@ -88,12 +88,17 @@ export default function DockInput({
     }
   };
 
-  const adjustHeight = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const target = e.target;
-    target.style.height = 'auto';
-    target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-    setInput(target.value);
+  const adjustHeight = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
   };
+
+  // Sync height whenever input changes (handles programmatic updates like clipboard)
+  useEffect(() => {
+    adjustHeight();
+  }, [input]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -121,6 +126,92 @@ export default function DockInput({
       textareaRef.current.focus();
     }
   }, [autoFocus]);
+
+  const lastAutoFilledRef = useRef<string>('');
+
+  // Helper to process clipboard items (used by both auto-read and manual paste)
+  const processClipboardItems = async (items: ClipboardItem[] | DataTransferItemList) => {
+    const newFiles: File[] = [];
+    let textContent = '';
+
+    for (const item of Array.from(items)) {
+      // Handle ClipboardItem (from navigator.clipboard.read)
+      if (item instanceof ClipboardItem) {
+        for (const type of item.types) {
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            const extension = type.split('/')[1] || 'png';
+            const file = new File([blob], `clipboard-image-${Date.now()}.${extension}`, { type });
+            newFiles.push(file);
+          } else if (type === 'text/plain') {
+            const blob = await item.getType(type);
+            textContent = await blob.text();
+          }
+        }
+      } 
+      // Handle DataTransferItem (from onPaste event)
+      else if (item instanceof DataTransferItem) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) newFiles.push(file);
+        } else if (item.type === 'text/plain') {
+          item.getAsString((text) => {
+            if (text && !input) setInput(text);
+          });
+        }
+      }
+    }
+
+    if (newFiles.length > 0) {
+      setFiles(prev => [...prev, ...newFiles]);
+    }
+    return textContent;
+  };
+
+  // Auto-read clipboard logic
+  useEffect(() => {
+    if (!isGlobal) return;
+
+    const checkClipboard = async () => {
+      const config = JSON.parse(localStorage.getItem('nexus-model-config') || '{}');
+      if (!config.autoReadClipboard) return;
+
+      try {
+        const items = await navigator.clipboard.read();
+        const currentInput = textareaRef.current?.value || '';
+        
+        const textContent = await processClipboardItems(items);
+        const trimmedText = textContent?.trim();
+
+        if (currentInput.trim() === '' && trimmedText && trimmedText !== lastAutoFilledRef.current) {
+          setInput(trimmedText);
+          lastAutoFilledRef.current = trimmedText;
+          // Height will be handled by the useEffect watching [input]
+        }
+      } catch (err) {
+        console.warn('Auto-read clipboard failed:', err);
+      }
+    };
+
+    checkClipboard();
+    window.addEventListener('focus', checkClipboard);
+    return () => window.removeEventListener('focus', checkClipboard);
+  }, [isGlobal]);
+
+  // Handle manual paste event for better UX
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    // Only handle if there are items
+    if (e.clipboardData?.items) {
+      await processClipboardItems(e.clipboardData.items);
+    }
+  };
+
+  // Clear the memory if the user starts typing something else
+  useEffect(() => {
+    if (input.trim() !== '' && input !== lastAutoFilledRef.current) {
+      lastAutoFilledRef.current = '';
+    }
+  }, [input]);
 
   const isActive = input.trim().length > 0 || files.length > 0;
   
@@ -194,8 +285,9 @@ export default function DockInput({
                 ref={textareaRef}
                 rows={1}
                 value={input}
-                onChange={adjustHeight}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={placeholder || (isGlobal ? "Create a new concept..." : "Ask a follow-up...")}
                 className={`w-full bg-transparent border-none focus:ring-0 resize-none py-2 font-bold text-black placeholder:text-slate-400 outline-none scrollbar-hide ${isGlobal ? 'text-[16px]' : 'text-[13px]'}`}
               />

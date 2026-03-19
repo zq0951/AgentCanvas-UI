@@ -4,12 +4,12 @@ import React, { memo, useMemo, useState } from 'react';
 import { Handle, Position, NodeResizer } from 'reactflow';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bot, GripHorizontal, Trash2, Sparkles, FileCode, FileText, CheckCircle2 } from 'lucide-react';
+import { Bot, GripHorizontal, Trash2, Sparkles, FileCode, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
 import DockInput from '@/components/input/DockInput';
 import { useCanvas } from '@/contexts/CanvasContext';
 
-function MarkdownNode({ id, data, selected }: { id: string, data: { text: string; prompt?: string; isGenerating?: boolean }, selected: boolean }) {
-  const { deleteNode, spawnChildNode } = useCanvas();
+function MarkdownNode({ id, data, selected }: { id: string, data: { text: string; prompt?: string; isGenerating?: boolean; isError?: boolean; attachments?: { type: string, url: string }[] }, selected: boolean }) {
+  const { deleteNode, spawnChildNode, retryNode } = useCanvas();
   const [copiedMD, setCopiedMD] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -23,7 +23,11 @@ function MarkdownNode({ id, data, selected }: { id: string, data: { text: string
       chips.push(match[1]);
     }
     const cleanText = data.text.replace(chipRegex, '').trim().replace(/[,，\s]+$/, ''); 
-    return { cleanText, chips };
+    
+    const config = JSON.parse(localStorage.getItem('nexus-model-config') || '{}');
+    const limit = config.zeroFrictionCount ?? 3;
+    
+    return { cleanText, chips: chips.slice(0, limit) };
   }, [data.text]);
 
   const copyMarkdown = async () => {
@@ -75,6 +79,24 @@ function MarkdownNode({ id, data, selected }: { id: string, data: { text: string
               <p className="text-[17px] font-bold text-slate-600 italic leading-relaxed">
                 {data.prompt}
               </p>
+
+              {/* User Attachments Display */}
+              {data.attachments && data.attachments.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {data.attachments.map((att, idx) => (
+                    <div key={idx} className="relative group/att w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-100 shadow-sm">
+                      {att.type.startsWith('image/') ? (
+                        <img src={att.url} alt="attachment" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-400">
+                          <FileText size={24} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="mt-6 mb-8 border-b-2 border-dashed border-slate-100" />
             </div>
           )}
@@ -98,6 +120,18 @@ function MarkdownNode({ id, data, selected }: { id: string, data: { text: string
               )
             )}
           </div>
+
+          {data.isError && !data.isGenerating && (
+            <div className="mt-8 pt-6 border-t border-red-100 flex justify-center">
+              <button
+                onClick={() => retryNode(id)}
+                className="group flex items-center gap-3 px-8 py-4 bg-red-50 hover:bg-red-600 border-2 border-red-200 hover:border-red-600 rounded-2xl text-red-600 hover:text-white font-black transition-all shadow-lg active:scale-95"
+              >
+                <RefreshCw size={20} className="group-hover:rotate-180 transition-transform duration-500" />
+                RETRY GENERATION
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Footer Area */}
@@ -141,7 +175,8 @@ const areEqual = (prevProps: any, nextProps: any) => {
     prevProps.selected === nextProps.selected &&
     prevProps.data.text === nextProps.data.text &&
     prevProps.data.prompt === nextProps.data.prompt &&
-    prevProps.data.isGenerating === nextProps.data.isGenerating
+    prevProps.data.isGenerating === nextProps.data.isGenerating &&
+    prevProps.data.isError === nextProps.data.isError
   );
 };
 

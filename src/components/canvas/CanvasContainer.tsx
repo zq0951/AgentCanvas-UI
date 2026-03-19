@@ -14,6 +14,13 @@ const nodeTypes = {
   markdown: MarkdownNode,
 };
 
+const edgeTypes = {}; // Define stable edgeTypes even if empty
+
+const defaultEdgeOptions = {
+  animated: true,
+  style: { stroke: '#6366f1', strokeWidth: 4 },
+};
+
 export default function CanvasContainer() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } = useCanvas();
 
@@ -23,6 +30,8 @@ export default function CanvasContainer() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}

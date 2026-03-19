@@ -19,7 +19,8 @@ interface CanvasContextType {
   selectNode: (id: string) => void;
   clearCanvas: () => void;
   spawnChildNode: (parentId: string, prompt: string, attachments?: { type: string, url: string }[]) => void;
-  registerSendMessageHandler: (handler: (text: string, parentId?: string, attachments?: { type: string, url: string }[]) => void) => void;
+  retryNode: (id: string) => void;
+  registerSendMessageHandler: (handler: (text: string, parentId?: string, attachments?: { type: string, url: string }[], existingNodeId?: string) => void) => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | null>(null);
@@ -28,7 +29,7 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const [sendMessageHandler, setSendMessageHandler] = useState<((text: string, parentId?: string, attachments?: { type: string, url: string }[]) => void) | undefined>();
+  const [sendMessageHandler, setSendMessageHandler] = useState<((text: string, parentId?: string, attachments?: { type: string, url: string }[], existingNodeId?: string) => void) | undefined>();
   
   // Refs to track state and changes without triggering re-renders or staleness
   const hasChangesRef = useRef(false);
@@ -175,7 +176,16 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     if (sendMessageHandler) sendMessageHandler(prompt, parentId, attachments);
   }, [sendMessageHandler]);
 
-  const registerSendMessageHandler = useCallback((handler: (text: string, parentId?: string, attachments?: { type: string, url: string }[]) => void) => {
+  const retryNode = useCallback((id: string) => {
+    const node = nodesRef.current.find(n => n.id === id);
+    if (node && node.data.prompt && !node.data.isGenerating) {
+      if (sendMessageHandler) {
+        sendMessageHandler(node.data.prompt, undefined, node.data.attachments, id);
+      }
+    }
+  }, [sendMessageHandler]);
+
+  const registerSendMessageHandler = useCallback((handler: (text: string, parentId?: string, attachments?: { type: string, url: string }[], existingNodeId?: string) => void) => {
     setSendMessageHandler(() => handler);
   }, []);
 
@@ -183,7 +193,7 @@ export function CanvasProvider({ children }: { children: React.ReactNode }) {
     <CanvasContext.Provider value={{ 
       sessionId, setSessionId, nodes, edges, onNodesChange, onEdgesChange, onConnect, 
       addNode, deleteNode, updateNodeData, connectNodes, selectNode, clearCanvas,
-      spawnChildNode, registerSendMessageHandler
+      spawnChildNode, retryNode, registerSendMessageHandler
     }}>
       {children}
     </CanvasContext.Provider>

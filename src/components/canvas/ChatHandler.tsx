@@ -45,8 +45,34 @@ export default function ChatHandler() {
     }
   }, [sessionId]);
 
+  const getConversationHistory = (nodeId: string): any[] => {
+    const history: any[] = [];
+    let currentNodeId: string | null = nodeId;
+
+    while (currentNodeId && currentNodeId !== 'root') {
+      const node = nodesRef.current.find(n => n.id === currentNodeId);
+      if (node) {
+        // Add assistant response
+        history.unshift({ role: 'assistant', content: node.data.text || '' });
+        
+        // Add user prompt with attachments if any
+        history.unshift({ 
+          role: 'user', 
+          content: node.data.prompt || '',
+          attachments: node.data.attachments || []
+        });
+        
+        currentNodeId = node.data.parentId;
+      } else {
+        currentNodeId = null;
+      }
+    }
+
+    return history;
+  };
+
   useEffect(() => {
-    registerSendMessageHandler(async (prompt, parentId, attachments) => {
+    registerSendMessageHandler(async (prompt, parentId, attachments, existingNodeId) => {
       const config = JSON.parse(localStorage.getItem('nexus-model-config') || '{}');
       isGeneratingRef.current = true;
       
@@ -56,44 +82,77 @@ export default function ChatHandler() {
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
-      // 宽度占据视口 80%，在 800px 到 1600px 之间波动
       const cardWidth = Math.min(Math.max(viewportWidth * 0.8, 800), 1600);
-      // 高度占据视口 80%，在 600px 到 1000px 之间波动
       const cardHeight = Math.min(Math.max(viewportHeight * 0.8, 600), 1000);
 
-      if (parentId === 'root' || !parentId) {
-        targetNodeId = `node-${Date.now()}`;
-        const { x, y, zoom } = getViewport();
-        const flowX = (window.innerWidth / 2 - x) / zoom;
-        const flowY = (window.innerHeight / 2 - y) / zoom;
-        targetPosition = { x: flowX - cardWidth / 2, y: flowY - cardHeight / 2 };
-      } else {
-        const parentNode = nodesRef.current.find(n => n.id === parentId);
-        targetNodeId = `node-${Date.now()}`;
-        const px = parentNode?.position.x ?? 400;
-        const py = parentNode?.position.y ?? 300;
-        const parentWidth = parentNode?.style?.width ? Number(parentNode.style.width) : 600;
-        const parentHeight = parentNode?.style?.height ? Number(parentNode.style.height) : 500;
-        targetPosition = { 
-          x: px + (parentWidth / 2) - (cardWidth / 2), 
-          y: py + parentHeight + 150 
-        };
+      // Get history if it's a follow-up or retry
+      let history: any[] = [];
+      const actualParentId = existingNodeId 
+        ? nodesRef.current.find(n => n.id === existingNodeId)?.data?.parentId 
+        : parentId;
+
+      if (actualParentId && actualParentId !== 'root') {
+        history = getConversationHistory(actualParentId);
       }
 
-      // 记录新节点 ID，触发上面的 useEffect 移动逻辑
-      lastCreatedNodeIdRef.current = targetNodeId;
+      if (existingNodeId) {
+        targetNodeId = existingNodeId;
+        updateNodeData(targetNodeId, { text: '', isGenerating: true, attachments, isError: false, prompt });
+      } else {
+        targetNodeId = `node-${Date.now()}`;
+        if (parentId === 'root' || !parentId) {
+          const { x, y, zoom } = getViewport();
+          const flowX = (window.innerWidth / 2 - x) / zoom;
+          const flowY = (window.innerHeight / 2 - y) / zoom;
+          
+          // Calculate stagger for root nodes to prevent overlapping in the center
+          const rootNodes = nodesRef.current.filter(n => !n.data?.parentId || n.data.parentId === 'root');
+          const staggerIndex = rootNodes.length;
+          
+          targetPosition = { 
+            x: flowX - (cardWidth / 2) + (staggerIndex * 120), 
+            y: flowY - (cardHeight / 2) + (staggerIndex * 80) 
+          };
+        } else {
+          const parentNode = nodesRef.current.find(n => n.id === parentId);
+          const px = parentNode?.position.x ?? 400;
+          const py = parentNode?.position.y ?? 300;
+          
+          // Use top-level width/height if available, fallback to style, then to defaults
+          const parentWidth = parentNode?.width ?? (parentNode?.style?.width ? Number(parentNode.style.width) : 800);
+          const parentHeight = parentNode?.height ?? (parentNode?.style?.height ? Number(parentNode.style.height) : 600);
+          
+          // Calculate stagger based on existing children to prevent overlap
+          const siblings = nodesRef.current.filter(n => n.data?.parentId === parentId);
+          const staggerIndex = siblings.length;
+          
+          targetPosition = { 
+            // Increased stagger: 120px horizontal and 80px vertical per existing sibling
+            x: px + (parentWidth / 2) - (cardWidth / 2) + (staggerIndex * 120), 
+            y: py + parentHeight + 200 + (staggerIndex * 80)
+          };
+        }
 
-      addNode({
-        id: targetNodeId,
-        type: 'markdown',
-        position: targetPosition,
-        data: { prompt, text: '', isGenerating: true },
-        style: { width: cardWidth, height: cardHeight },
-        selected: true
-      });
+        lastCreatedNodeIdRef.current = targetNodeId;
 
-      if (parentId && parentId !== 'root') {
-        connectNodes(parentId, targetNodeId);
+        addNode({
+          id: targetNodeId,
+          type: 'markdown',
+          position: targetPosition,
+          data: { 
+            prompt, 
+            text: '', 
+            isGenerating: true, 
+            attachments,
+            parentId: parentId || 'root' // Ensure parentId is stored
+          },
+          style: { width: cardWidth, height: cardHeight },
+          selected: true
+        });
+
+        if (parentId && parentId !== 'root') {
+          connectNodes(parentId, targetNodeId);
+        }
       }
 
       try {
@@ -101,21 +160,26 @@ export default function ChatHandler() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: [{ 
-              role: 'user', 
-              content: prompt,
-              attachments: attachments 
-            }],
+            messages: [
+              ...history,
+              { 
+                role: 'user', 
+                content: prompt,
+                attachments: attachments 
+              }
+            ],
             model: config.model,
             apiKey: config.apiKey,
             provider: config.provider,
-            baseUrl: config.baseUrl
+            baseUrl: config.baseUrl,
+            systemPrompt: config.systemPrompt,
+            zeroFrictionCount: config.zeroFrictionCount
           })
         });
 
         if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'API Error');
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `API Error: ${response.status}`);
         }
 
         const reader = response.body?.getReader();
@@ -167,13 +231,16 @@ export default function ChatHandler() {
         }
         
         updateNodeData(targetNodeId, { isGenerating: false });
+        isGeneratingRef.current = false;
 
       } catch (error: any) {
         console.error('Chat failed:', error);
         updateNodeData(targetNodeId, { 
           text: `Error: ${error.message || 'Failed to connect.'}`,
-          isGenerating: false 
+          isGenerating: false,
+          isError: true
         });
+        isGeneratingRef.current = false;
       }
     });
   }, [registerSendMessageHandler, addNode, connectNodes, updateNodeData]);

@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model, apiKey, provider, baseUrl: customBaseUrl } = await req.json();
+    const { messages, model, apiKey, provider, baseUrl: customBaseUrl, systemPrompt: userSystemPrompt, zeroFrictionCount = 3 } = await req.json();
 
     const isLocalProvider = provider === 'ollama' || provider === 'custom';
     if (!apiKey && !isLocalProvider) {
       return NextResponse.json({ error: 'API Key is required' }, { status: 400 });
     }
 
-    const systemPrompt = `You are NexusBoard AI. 
-Every response MUST conclude with exactly 3 follow-up suggestions in the format: [NEXT: Label].
+    const defaultSystemPrompt = `You are NexusBoard AI. 
+Every response MUST conclude with exactly ${zeroFrictionCount} follow-up suggestions in the format: [NEXT: Label].
 The labels should be short, actionable, and progress the current concept.`;
+
+    const finalSystemPrompt = userSystemPrompt 
+      ? `${userSystemPrompt}\n\nIMPORTANT: Every response MUST conclude with exactly ${zeroFrictionCount} follow-up suggestions in the format: [NEXT: Label].`
+      : defaultSystemPrompt;
 
     // 1. 处理 Google Gemini 逻辑
     if (provider === 'gemini') {
@@ -44,7 +48,7 @@ The labels should be short, actionable, and progress the current concept.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           contents,
-          systemInstruction: { parts: [{ text: systemPrompt }] }
+          systemInstruction: { parts: [{ text: finalSystemPrompt }] }
         })
       });
 
@@ -87,7 +91,7 @@ The labels should be short, actionable, and progress the current concept.`;
       body: JSON.stringify({
         model: model || 'gpt-4o',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: finalSystemPrompt },
           ...messages.map((m: any) => ({ role: m.role, content: m.content }))
         ],
         stream: true,
