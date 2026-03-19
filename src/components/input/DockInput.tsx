@@ -103,18 +103,25 @@ export default function DockInput({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
-      const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-      
+      addValidFiles(newFiles);
+    }
+  };
+
+  const addValidFiles = (newFiles: File[]) => {
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    
+    setFiles(prev => {
       const validFiles = newFiles.filter(file => {
         if (file.size > MAX_SIZE) {
           alert(`File "${file.name}" is too large. Maximum size is 5MB.`);
           return false;
         }
-        return true;
+        // Simple de-duplication: check if file with same name and size already exists
+        const isDuplicate = prev.some(p => p.name === file.name && p.size === file.size);
+        return !isDuplicate;
       });
-
-      setFiles(prev => [...prev, ...validFiles]);
-    }
+      return [...prev, ...validFiles];
+    });
   };
 
   const removeFile = (index: number) => {
@@ -128,6 +135,7 @@ export default function DockInput({
   }, [autoFocus]);
 
   const lastAutoFilledRef = useRef<string>('');
+  const lastFilesFingerprintRef = useRef<string>('');
 
   // Helper to process clipboard items (used by both auto-read and manual paste)
   const processClipboardItems = async (items: ClipboardItem[] | DataTransferItemList) => {
@@ -141,7 +149,7 @@ export default function DockInput({
           if (type.startsWith('image/')) {
             const blob = await item.getType(type);
             const extension = type.split('/')[1] || 'png';
-            const file = new File([blob], `clipboard-image-${Date.now()}.${extension}`, { type });
+            const file = new File([blob], `pasted-image-${blob.size}.${extension}`, { type });
             newFiles.push(file);
           } else if (type === 'text/plain') {
             const blob = await item.getType(type);
@@ -153,19 +161,41 @@ export default function DockInput({
       else if (item instanceof DataTransferItem) {
         if (item.type.startsWith('image/')) {
           const file = item.getAsFile();
-          if (file) newFiles.push(file);
+          if (file) {
+            const renamedFile = new File([file], `pasted-image-${file.size}.${file.type.split('/')[1]}`, { type: file.type });
+            newFiles.push(renamedFile);
+          }
         } else if (item.type === 'text/plain') {
-          item.getAsString((text) => {
-            if (text && !input) setInput(text);
-          });
+          textContent = await new Promise<string>(resolve => item.getAsString(resolve));
         }
       }
     }
 
     if (newFiles.length > 0) {
-      setFiles(prev => [...prev, ...newFiles]);
+      addValidFiles(newFiles);
     }
     return textContent;
+  };
+
+  // Helper to get a fingerprint of clipboard items to avoid repeated auto-reading
+  const getClipboardFingerprint = async (items: ClipboardItem[]) => {
+    let fingerprint = '';
+    for (const item of items) {
+      fingerprint += item.types.join(',') + '-';
+      if (item.types.includes('text/plain')) {
+        try {
+          const blob = await item.getType('text/plain');
+          const text = await blob.text();
+          fingerprint += `text:${text.length}:${text.slice(0, 20)}`;
+        } catch (e) {}
+      }
+      if (item.types.some(t => t.startsWith('image/'))) {
+        fingerprint += `img:${item.types.find(t => t.startsWith('image/'))}`;
+        // We can't easily get the size without reading the whole blob,
+        // so we'll rely on the combination of types and text for the fingerprint
+      }
+    }
+    return fingerprint;
   };
 
   // Auto-read clipboard logic
@@ -178,31 +208,73 @@ export default function DockInput({
 
       try {
         const items = await navigator.clipboard.read();
-        const currentInput = textareaRef.current?.value || '';
         
+        // Generate a fingerprint of current clipboard
+        let currentFingerprint = '';
+        for (const item of items) {
+          currentFingerprint += item.types.join('|');
+        }
+
+        // If clipboard fingerprint hasn't changed, don't auto-read again
+        // This is the key fix: if user deleted the last auto-read content, 
+        // we don't re-add it until they copy something NEW.
+        if (currentFingerprint === lastFilesFingerprintRef.current) return;
+
+        // Also avoid reading if we already have files and it's a focus trigger
+        if (files.length > 0) return;
+
+        const currentInput = textareaRef.current?.value || '';
         const textContent = await processClipboardItems(items);
         const trimmedText = textContent?.trim();
 
         if (currentInput.trim() === '' && trimmedText && trimmedText !== lastAutoFilledRef.current) {
           setInput(trimmedText);
           lastAutoFilledRef.current = trimmedText;
-          // Height will be handled by the useEffect watching [input]
         }
+        
+        // Record this clipboard state as "processed"
+        lastFilesFingerprintRef.current = currentFingerprint;
+        
       } catch (err) {
         console.warn('Auto-read clipboard failed:', err);
       }
     };
 
+    // Initial check and on focus
     checkClipboard();
-    window.addEventListener('focus', checkClipboard);
-    return () => window.removeEventListener('focus', checkClipboard);
-  }, [isGlobal]);
+    const handleFocus = () => {
+      // Small delay to ensure clipboard is ready
+      setTimeout(checkClipboard, 100);
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [isGlobal, files.length]);
+
+  // If user clears everything or changes something manually, we might want to reset fingerprint?
+  // No, the safest is to only reset when they copy something else.
 
   // Handle manual paste event for better UX
   const handlePaste = async (e: React.ClipboardEvent) => {
-    // Only handle if there are items
     if (e.clipboardData?.items) {
-      await processClipboardItems(e.clipboardData.items);
+      e.preventDefault();
+      const text = await processClipboardItems(e.clipboardData.items);
+      
+      // Update fingerprint so auto-read doesn't try to "re-add" what was just manually pasted
+      let manualFingerprint = '';
+      for (const item of Array.from(e.clipboardData.items)) {
+        manualFingerprint += item.type + '|';
+      }
+      lastFilesFingerprintRef.current = manualFingerprint;
+
+      if (text && !input) {
+        setInput(text);
+      } else if (text) {
+        const start = textareaRef.current?.selectionStart || 0;
+        const end = textareaRef.current?.selectionEnd || 0;
+        const newValue = input.substring(0, start) + text + input.substring(end);
+        setInput(newValue);
+      }
     }
   };
 

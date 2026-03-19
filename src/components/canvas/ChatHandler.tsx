@@ -2,10 +2,16 @@
 
 import { useEffect, useRef } from 'react';
 import { useCanvas } from '@/contexts/CanvasContext';
-import { useReactFlow } from 'reactflow';
+import { useReactFlow, Node } from 'reactflow';
+import { NodeData, Attachment, ModelConfig } from '@/types/canvas';
+import { 
+  getResponsiveCardDimensions, 
+  calculateRootNodePosition, 
+  calculateChildNodePosition 
+} from '@/lib/layout';
 
 export default function ChatHandler() {
-  const { registerSendMessageHandler, updateNodeData, addNode, connectNodes, selectNode, nodes, sessionId } = useCanvas();
+  const { registerSendMessageHandler, updateNodeData, addNode, connectNodes, nodes, sessionId } = useCanvas();
   const { setCenter, fitView, getViewport } = useReactFlow();
   const nodesRef = useRef(nodes);
   const lastCreatedNodeIdRef = useRef<string | null>(null);
@@ -27,14 +33,13 @@ export default function ChatHandler() {
         const targetZoom = currentZoom < 0.5 ? 0.8 : currentZoom;
         
         setCenter(centerX, centerY, { zoom: targetZoom, duration: 600 });
-        lastCreatedNodeIdRef.current = null; // 消费掉标记，避免重复移动
+        lastCreatedNodeIdRef.current = null;
       }
     }
-  }, [nodes]);
+  }, [nodes, getViewport, setCenter]);
 
-  // 当切换历史会话 (sessionId 变化) 时，自动调整视口以显示所有卡片
+  // 当切换历史会话 (sessionId 变化) 时，自动调整视口
   useEffect(() => {
-    // 如果是用户正在生成新卡片导致的 sessionId 变化（即从 null 变为第一个 ID），则不触发 fitView
     if (isGeneratingRef.current) return;
 
     if (nodes.length > 0) {
@@ -43,7 +48,7 @@ export default function ChatHandler() {
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [sessionId]);
+  }, [sessionId, nodes.length, fitView]);
 
   const getConversationHistory = (nodeId: string): any[] => {
     const history: any[] = [];
@@ -52,17 +57,13 @@ export default function ChatHandler() {
     while (currentNodeId && currentNodeId !== 'root') {
       const node = nodesRef.current.find(n => n.id === currentNodeId);
       if (node) {
-        // Add assistant response
         history.unshift({ role: 'assistant', content: node.data.text || '' });
-        
-        // Add user prompt with attachments if any
         history.unshift({ 
           role: 'user', 
           content: node.data.prompt || '',
           attachments: node.data.attachments || []
         });
-        
-        currentNodeId = node.data.parentId;
+        currentNodeId = node.data.parentId || null;
       } else {
         currentNodeId = null;
       }
@@ -73,17 +74,12 @@ export default function ChatHandler() {
 
   useEffect(() => {
     registerSendMessageHandler(async (prompt, parentId, attachments, existingNodeId) => {
-      const config = JSON.parse(localStorage.getItem('nexus-model-config') || '{}');
+      const config: ModelConfig = JSON.parse(localStorage.getItem('nexus-model-config') || '{}');
       isGeneratingRef.current = true;
       
+      const { width: cardWidth, height: cardHeight } = getResponsiveCardDimensions();
       let targetNodeId: string;
       let targetPosition = { x: 400, y: 300 };
-      
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      
-      const cardWidth = Math.min(Math.max(viewportWidth * 0.8, 800), 1600);
-      const cardHeight = Math.min(Math.max(viewportHeight * 0.8, 600), 1000);
 
       // Get history if it's a follow-up or retry
       let history: any[] = [];
@@ -100,37 +96,14 @@ export default function ChatHandler() {
         updateNodeData(targetNodeId, { text: '', isGenerating: true, attachments, isError: false, prompt });
       } else {
         targetNodeId = `node-${Date.now()}`;
-        if (parentId === 'root' || !parentId) {
-          const { x, y, zoom } = getViewport();
-          const flowX = (window.innerWidth / 2 - x) / zoom;
-          const flowY = (window.innerHeight / 2 - y) / zoom;
-          
-          // Calculate stagger for root nodes to prevent overlapping in the center
-          const rootNodes = nodesRef.current.filter(n => !n.data?.parentId || n.data.parentId === 'root');
-          const staggerIndex = rootNodes.length;
-          
-          targetPosition = { 
-            x: flowX - (cardWidth / 2) + (staggerIndex * 120), 
-            y: flowY - (cardHeight / 2) + (staggerIndex * 80) 
-          };
+        
+        if (!parentId || parentId === 'root') {
+          targetPosition = calculateRootNodePosition(getViewport(), nodesRef.current as Node<NodeData>[], cardWidth, cardHeight);
         } else {
           const parentNode = nodesRef.current.find(n => n.id === parentId);
-          const px = parentNode?.position.x ?? 400;
-          const py = parentNode?.position.y ?? 300;
-          
-          // Use top-level width/height if available, fallback to style, then to defaults
-          const parentWidth = parentNode?.width ?? (parentNode?.style?.width ? Number(parentNode.style.width) : 800);
-          const parentHeight = parentNode?.height ?? (parentNode?.style?.height ? Number(parentNode.style.height) : 600);
-          
-          // Calculate stagger based on existing children to prevent overlap
-          const siblings = nodesRef.current.filter(n => n.data?.parentId === parentId);
-          const staggerIndex = siblings.length;
-          
-          targetPosition = { 
-            // Increased stagger: 120px horizontal and 80px vertical per existing sibling
-            x: px + (parentWidth / 2) - (cardWidth / 2) + (staggerIndex * 120), 
-            y: py + parentHeight + 200 + (staggerIndex * 80)
-          };
+          if (parentNode) {
+            targetPosition = calculateChildNodePosition(parentNode as Node<NodeData>, nodesRef.current as Node<NodeData>[], cardWidth, cardHeight);
+          }
         }
 
         lastCreatedNodeIdRef.current = targetNodeId;
@@ -144,7 +117,7 @@ export default function ChatHandler() {
             text: '', 
             isGenerating: true, 
             attachments,
-            parentId: parentId || 'root' // Ensure parentId is stored
+            parentId: parentId || 'root'
           },
           style: { width: cardWidth, height: cardHeight },
           selected: true
@@ -162,18 +135,9 @@ export default function ChatHandler() {
           body: JSON.stringify({
             messages: [
               ...history,
-              { 
-                role: 'user', 
-                content: prompt,
-                attachments: attachments 
-              }
+              { role: 'user', content: prompt, attachments }
             ],
-            model: config.model,
-            apiKey: config.apiKey,
-            provider: config.provider,
-            baseUrl: config.baseUrl,
-            systemPrompt: config.systemPrompt,
-            zeroFrictionCount: config.zeroFrictionCount
+            ...config
           })
         });
 
@@ -185,31 +149,87 @@ export default function ChatHandler() {
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
-        let chunkBuffer = ''; // 原始数据块缓冲区
+        let chunkBuffer = '';
+        let toolArgumentsBuffer = ''; // 用于累计 Tool Call 的参数
+        let isHandlingToolCall = false;
 
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             
-            const chunk = decoder.decode(value, { stream: true });
-            chunkBuffer += chunk;
+            chunkBuffer += decoder.decode(value, { stream: true });
 
             if (config.provider === 'gemini') {
-              // 稳健提取逻辑：使用正则从全局 chunkBuffer 中寻找所有完整的 "text": "..."
-              // 我们不清除 chunkBuffer，因为最后一个 chunk 可能是半截的
-              const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
-              let match;
-              let tempFullText = '';
-              while ((match = regex.exec(chunkBuffer)) !== null) {
-                let text = match[1];
-                text = text.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                tempFullText += text;
+              let startIndex = 0;
+              while (true) {
+                const openBrace = chunkBuffer.indexOf('{', startIndex);
+                if (openBrace === -1) break;
+
+                // 鲁棒的 JSON 边界检测：处理字符串内的括号
+                let braceCount = 0;
+                let closeBrace = -1;
+                let inString = false;
+                let escaped = false;
+
+                for (let i = openBrace; i < chunkBuffer.length; i++) {
+                  const char = chunkBuffer[i];
+                  
+                  if (escaped) {
+                    escaped = false;
+                    continue;
+                  }
+
+                  if (char === '\\') {
+                    escaped = true;
+                    continue;
+                  }
+
+                  if (char === '"') {
+                    inString = !inString;
+                    continue;
+                  }
+
+                  if (!inString) {
+                    if (char === '{') braceCount++;
+                    if (char === '}') braceCount--;
+                    if (braceCount === 0) {
+                      closeBrace = i;
+                      break;
+                    }
+                  }
+                }
+
+                if (closeBrace !== -1) {
+                  const jsonStr = chunkBuffer.substring(openBrace, closeBrace + 1);
+                  try {
+                    const json = JSON.parse(jsonStr);
+                    const candidate = json.candidates?.[0];
+                    const parts = candidate?.content?.parts || [];
+
+                    for (const part of parts) {
+                      if (part.functionCall) {
+                        const { args } = part.functionCall;
+                        updateNodeData(targetNodeId, { chartData: args, type: 'chart' as any });
+                      } else if (typeof part.text === 'string') {
+                        // 显式检查 text 字段，确保空字符串也能通过，同时天然忽略 thoughtSignature 等非文本字段
+                        fullText += part.text;
+                        updateNodeData(targetNodeId, { text: fullText });
+                      }
+                    }
+                  } catch (e) {
+                    // 解析失败则忽略
+                  }
+                  startIndex = closeBrace + 1;
+                } else {
+                  break;
+                }
               }
-              fullText = tempFullText;
-              updateNodeData(targetNodeId, { text: fullText });
+              chunkBuffer = chunkBuffer.substring(startIndex);
             } else {
-              // OpenAI SSE 格式处理
+
+
+              // 处理 OpenAI / SSE 流
               const lines = chunkBuffer.split('\n');
               chunkBuffer = lines.pop() || ''; 
               for (const line of lines) {
@@ -218,9 +238,20 @@ export default function ChatHandler() {
                 if (cleanLine.startsWith('data: ')) {
                   try {
                     const json = JSON.parse(cleanLine.replace('data: ', ''));
-                    const content = json.choices?.[0]?.delta?.content || '';
-                    if (content) {
-                      fullText += content;
+                    const delta = json.choices?.[0]?.delta;
+                    
+                    if (delta?.tool_calls?.[0]?.function?.arguments) {
+                      isHandlingToolCall = true;
+                      toolArgumentsBuffer += delta.tool_calls[0].function.arguments;
+                      // 尝试解析部分 JSON (如果已经结束)
+                      try {
+                        const parsedArgs = JSON.parse(toolArgumentsBuffer);
+                        updateNodeData(targetNodeId, { chartData: parsedArgs, type: 'chart' as any });
+                      } catch (e) {
+                        // 还在累计中
+                      }
+                    } else if (delta?.content) {
+                      fullText += delta.content;
                       updateNodeData(targetNodeId, { text: fullText });
                     }
                   } catch (e) {}
@@ -230,7 +261,48 @@ export default function ChatHandler() {
           }
         }
         
+        // 最终检查是否需要根据文本 fallback 提取图表
+        if (!isHandlingToolCall) {
+          // 1. 标准 JSON Block 提取
+          const matchBlock = fullText.match(/```json:chart\n([\s\S]*?)```/);
+          if (matchBlock) {
+            try {
+              const parsed = JSON.parse(matchBlock[1]);
+              updateNodeData(targetNodeId, { chartData: parsed, type: 'chart' as any });
+              isHandlingToolCall = true;
+            } catch (e) {}
+          }
+          
+          // 2. 文本容错提取：识别 generate_chart(data=[...], keys=[...], ...)
+          if (!isHandlingToolCall && fullText.includes('generate_chart')) {
+            try {
+              // 匹配 data=[...] 部分
+              const dataMatch = fullText.match(/data\s*=\s*(\[[\s\S]*?\])/);
+              const keysMatch = fullText.match(/keys\s*=\s*(\[[\s\S]*?\])/);
+              const typeMatch = fullText.match(/type\s*=\s*["'](bar|line|pie)["']/);
+              const xAxisMatch = fullText.match(/xAxisKey\s*=\s*["'](.*?)["']/);
+              
+              if (dataMatch && keysMatch && typeMatch && xAxisMatch) {
+                // 将 python 风格的属性名替换为标准 JSON
+                const rawData = dataMatch[1].replace(/'/g, '"');
+                const rawKeys = keysMatch[1].replace(/'/g, '"');
+                
+                const parsed = {
+                  type: typeMatch[1],
+                  xAxisKey: xAxisMatch[1],
+                  keys: JSON.parse(rawKeys),
+                  data: JSON.parse(rawData)
+                };
+                updateNodeData(targetNodeId, { chartData: parsed, type: 'chart' as any });
+              }
+            } catch (e) {
+              console.warn('Failed to parse text-based chart call', e);
+            }
+          }
+        }
+
         updateNodeData(targetNodeId, { isGenerating: false });
+
         isGeneratingRef.current = false;
 
       } catch (error: any) {
@@ -243,7 +315,8 @@ export default function ChatHandler() {
         isGeneratingRef.current = false;
       }
     });
-  }, [registerSendMessageHandler, addNode, connectNodes, updateNodeData]);
+  }, [registerSendMessageHandler, addNode, connectNodes, updateNodeData, getViewport]);
 
   return null;
 }
+

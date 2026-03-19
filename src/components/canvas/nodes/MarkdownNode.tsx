@@ -7,12 +7,15 @@ import remarkGfm from 'remark-gfm';
 import { Bot, GripHorizontal, Trash2, Sparkles, FileCode, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
 import DockInput from '@/components/input/DockInput';
 import { useCanvas } from '@/contexts/CanvasContext';
+import { NodeData } from '@/types/canvas';
+import Modal from '@/components/ui/Modal';
 
-function MarkdownNode({ id, data, selected }: { id: string, data: { text: string; prompt?: string; isGenerating?: boolean; isError?: boolean; attachments?: { type: string, url: string }[] }, selected: boolean }) {
+function MarkdownNode({ id, data, selected }: { id: string, data: NodeData, selected: boolean }) {
   const { deleteNode, spawnChildNode, retryNode } = useCanvas();
   const [copiedMD, setCopiedMD] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const parsed = useMemo(() => {
     if (!data.text) return { cleanText: '', chips: [] };
@@ -43,12 +46,43 @@ function MarkdownNode({ id, data, selected }: { id: string, data: { text: string
     setTimeout(() => setCopiedText(false), 2000);
   };
 
+  const handleDelete = () => {
+    deleteNode(id);
+    setShowDeleteConfirm(false);
+  };
+
   return (
     <div 
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`nexus-force-light border-2 rounded-[2.5rem] w-full h-full flex flex-col transition-[border-color,box-shadow,ring] duration-300 ${selected ? 'border-indigo-600 ring-8 ring-indigo-500/10 shadow-[0_30px_100px_rgba(0,0,0,0.3)]' : 'border-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.1)]'} group/node relative bg-white overflow-visible`}>
       
+      {/* Custom Delete Modal */}
+      <Modal 
+        isOpen={showDeleteConfirm} 
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Discard Insight?"
+        type="danger"
+        footer={
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleDelete}
+              className="px-6 py-3 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-95"
+            >
+              Discard Node
+            </button>
+          </div>
+        }
+      >
+        You are about to remove this insight node. This action cannot be undone. Are you sure you want to proceed?
+      </Modal>
+
       <div className="flex-1 flex flex-col overflow-hidden rounded-[2.35rem] w-full h-full">
         {/* Header */}
         <div className="bg-slate-100 px-6 py-3 border-b-2 border-slate-200 flex items-center justify-between cursor-grab active:cursor-grabbing custom-drag-handle shrink-0">
@@ -61,7 +95,7 @@ function MarkdownNode({ id, data, selected }: { id: string, data: { text: string
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button onClick={() => deleteNode(id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover/node:opacity-100">
+            <button onClick={() => setShowDeleteConfirm(true)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover/node:opacity-100">
               <Trash2 size={18} />
             </button>
             <GripHorizontal size={22} className="text-slate-400 group-hover/node:text-slate-600" />
@@ -170,7 +204,7 @@ function MarkdownNode({ id, data, selected }: { id: string, data: { text: string
   );
 }
 
-const areEqual = (prevProps: any, nextProps: any) => {
+const areEqual = (prevProps: { selected: boolean, data: NodeData }, nextProps: { selected: boolean, data: NodeData }) => {
   return (
     prevProps.selected === nextProps.selected &&
     prevProps.data.text === nextProps.data.text &&
@@ -181,3 +215,4 @@ const areEqual = (prevProps: any, nextProps: any) => {
 };
 
 export default memo(MarkdownNode, areEqual);
+

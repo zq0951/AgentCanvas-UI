@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PanelLeft, Plus, History, Settings, Trash2, X } from 'lucide-react';
+import { PanelLeft, Plus, History, Settings, Trash2, X, LayoutGrid } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { getSessions, saveSession } from '@/lib/db';
+import { getSessions } from '@/lib/db';
 import ModelSettingsPanel from '../settings/ModelSettingsPanel';
 import { useCanvas } from '@/contexts/CanvasContext';
+import Modal from '@/components/ui/Modal';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -16,7 +17,8 @@ export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const [sessions, setSessions] = useState<any[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const { sessionId, setSessionId, clearCanvas } = useCanvas();
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const { sessionId, setSessionId, clearCanvas, autoLayout } = useCanvas();
 
   const refreshSessions = async () => {
     const data = await getSessions();
@@ -25,7 +27,6 @@ export default function Sidebar() {
 
   useEffect(() => {
     refreshSessions();
-    // Refresh periodically or on focus
     window.addEventListener('focus', refreshSessions);
     return () => window.removeEventListener('focus', refreshSessions);
   }, []);
@@ -36,8 +37,39 @@ export default function Sidebar() {
     clearCanvas();
   };
 
+  const handleClearBoard = () => {
+    clearCanvas();
+    setShowClearConfirm(false);
+  };
+
   return (
     <>
+      {/* Global Clear Confirm Modal */}
+      <Modal 
+        isOpen={showClearConfirm} 
+        onClose={() => setShowClearConfirm(false)}
+        title="Wipe Entire Board?"
+        type="danger"
+        footer={
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setShowClearConfirm(false)}
+              className="px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleClearBoard}
+              className="px-6 py-3 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-95"
+            >
+              Confirm Wipe
+            </button>
+          </div>
+        }
+      >
+        This will permanently delete all nodes and connections on the current board. You cannot undo this action. Proceed with caution.
+      </Modal>
+
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
@@ -105,7 +137,23 @@ export default function Sidebar() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-slate-200 bg-white/50">
+        <div className="p-4 border-t border-slate-200 bg-white/50 space-y-1">
+          <button 
+            onClick={() => autoLayout('TB')}
+            className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-slate-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all uppercase tracking-widest group"
+          >
+            <LayoutGrid size={18} className="group-hover:rotate-90 transition-transform" />
+            Auto Layout
+          </button>
+          
+          <button 
+            onClick={() => setShowClearConfirm(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all uppercase tracking-widest"
+          >
+            <Trash2 size={18} />
+            Clear Board
+          </button>
+
           <button 
             onClick={() => setIsSettingsOpen(true)}
             className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-slate-600 hover:bg-slate-900 hover:text-white rounded-xl transition-all uppercase tracking-widest"

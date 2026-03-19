@@ -9,10 +9,13 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { useCanvas } from '@/contexts/CanvasContext';
 import MarkdownNode from './nodes/MarkdownNode';
+import ChartNode from './nodes/ChartNode';
 
 const nodeTypes = {
   markdown: MarkdownNode,
+  chart: ChartNode,
 };
+
 
 const edgeTypes = {}; // Define stable edgeTypes even if empty
 
