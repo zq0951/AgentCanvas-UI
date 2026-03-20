@@ -15,6 +15,7 @@ export interface NodeData {
   attachments?: Attachment[];
   parentId?: string;
   staggerIndex?: number;
+  suggestions?: string[]; // 后端返回的意图预测
   chartData?: {
     type: 'bar' | 'line' | 'pie' | 'area';
     data: any[];

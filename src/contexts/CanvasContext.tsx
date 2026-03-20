@@ -26,7 +26,7 @@ interface CanvasContextType {
   onConnect: (connection: Connection) => void;
   addNode: (node: Node<NodeData>) => void;
   deleteNode: (id: string) => void;
-  updateNodeData: (id: string, data: Partial<NodeData>) => void;
+  updateNodeData: (id: string, data: Partial<NodeData> & { type?: string }) => void;
   connectNodes: (sourceId: string, targetId: string) => void;
   selectNode: (id: string) => void;
   clearCanvas: () => void;

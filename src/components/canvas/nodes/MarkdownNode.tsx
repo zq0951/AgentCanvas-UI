@@ -116,16 +116,20 @@ function MarkdownNode({ id, data, selected }: { id: string, data: NodeData, sele
 
               {/* User Attachments Display */}
               {data.attachments && data.attachments.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-3">
                   {data.attachments.map((att, idx) => (
-                    <div key={idx} className="relative group/att w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-100 shadow-sm">
+                    <div key={idx} className="relative group/att w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm hover:border-indigo-400 transition-colors bg-slate-50">
                       {att.type.startsWith('image/') ? (
                         <img src={att.url} alt="attachment" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-400">
-                          <FileText size={24} />
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-2">
+                          <FileText size={28} className="text-slate-400" />
+                          <span className="text-[10px] font-black uppercase text-slate-400 truncate w-full text-center tracking-tighter">File Attachment</span>
                         </div>
                       )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-white text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">View</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -171,22 +175,41 @@ function MarkdownNode({ id, data, selected }: { id: string, data: NodeData, sele
         {/* Footer Area */}
         {!data.isGenerating && (
           <div className="px-6 py-4 bg-slate-50 border-t-2 border-slate-200 flex flex-col gap-3 shrink-0">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-2">
               <div className="flex flex-wrap gap-2">
+                {/* 1. 渲染 API 返回的建议按钮 (优先展示) */}
+                {data.suggestions && data.suggestions.map((label, idx) => (
+                  <button 
+                    key={`sug-${idx}`} 
+                    onClick={() => spawnChildNode(id, label)} 
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 border-2 border-indigo-700 rounded-lg text-[10px] font-black text-white hover:bg-black hover:border-black transition-all shadow-md uppercase tracking-tighter"
+                  >
+                    <Sparkles size={10} className="text-white" />
+                    {label}
+                  </button>
+                ))}
+
+                {/* 2. 渲染原本从文本提取的 chips */}
                 {parsed.chips.map((label, idx) => (
-                  <button key={idx} onClick={() => spawnChildNode(id, label)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-slate-300 rounded-lg text-[10px] font-black text-black hover:bg-black hover:text-white hover:border-black transition-all shadow-sm uppercase tracking-tighter">
+                  <button key={`chip-${idx}`} onClick={() => spawnChildNode(id, label)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-slate-300 rounded-lg text-[10px] font-black text-black hover:bg-black hover:text-white hover:border-black transition-all shadow-sm uppercase tracking-tighter">
                     <Sparkles size={10} className="text-indigo-500" />
                     {label}
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button onClick={copyMarkdown} title="Copy Markdown" className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-all border-2 border-transparent hover:border-slate-200">
-                  {copiedMD ? <CheckCircle2 size={16} className="text-green-600" /> : <FileCode size={16} />}
-                </button>
-                <button onClick={copyPlainText} title="Copy Plain Text" className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-all border-2 border-transparent hover:border-slate-200">
-                  {copiedText ? <CheckCircle2 size={16} className="text-green-600" /> : <FileText size={16} />}
-                </button>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                  {data.suggestions ? 'Suggested Next Steps' : 'Contextual Actions'}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={copyMarkdown} title="Copy Markdown" className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-all border-2 border-transparent hover:border-slate-200">
+                    {copiedMD ? <CheckCircle2 size={16} className="text-green-600" /> : <FileCode size={16} />}
+                  </button>
+                  <button onClick={copyPlainText} title="Copy Plain Text" className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-all border-2 border-transparent hover:border-slate-200">
+                    {copiedText ? <CheckCircle2 size={16} className="text-green-600" /> : <FileText size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
             <DockInput variant="node" nodeId={id} />
@@ -195,11 +218,19 @@ function MarkdownNode({ id, data, selected }: { id: string, data: NodeData, sele
       </div>
       
       <NodeResizer minWidth={480} minHeight={300} isVisible={selected || isHovered} lineClassName="border-indigo-500 border-[3px] opacity-0 group-hover/node:opacity-30" handleClassName="!w-12 !h-12 !bg-transparent !border-none !-m-6" />
-      <Handle type="target" position={Position.Top} className="!w-6 !h-6 !bg-indigo-600 !border-[3px] !border-white !-top-3 shadow-xl z-50" />
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        className="!w-6 !h-6 !bg-indigo-600 !border-[3px] !border-white !-top-3 shadow-xl z-50" 
+      />
       <div className="absolute bottom-3 right-3 w-12 h-12 pointer-events-none flex items-end justify-end opacity-20 group-hover/node:opacity-100 transition-opacity">
         <div className="w-10 h-10 border-r-[6px] border-b-[6px] border-indigo-600 rounded-br-3xl" />
       </div>
-      <Handle type="source" position={Position.Bottom} className="!w-6 !h-6 !bg-black !border-[3px] !border-white !-bottom-3 shadow-xl z-50" />
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        className="!w-6 !h-6 !bg-black !border-[3px] !border-white !-bottom-3 shadow-xl z-50" 
+      />
     </div>
   );
 }
@@ -210,7 +241,9 @@ const areEqual = (prevProps: { selected: boolean, data: NodeData }, nextProps: {
     prevProps.data.text === nextProps.data.text &&
     prevProps.data.prompt === nextProps.data.prompt &&
     prevProps.data.isGenerating === nextProps.data.isGenerating &&
-    prevProps.data.isError === nextProps.data.isError
+    prevProps.data.isError === nextProps.data.isError &&
+    (prevProps.data.attachments?.length === nextProps.data.attachments?.length) &&
+    (prevProps.data.suggestions?.length === nextProps.data.suggestions?.length)
   );
 };
 

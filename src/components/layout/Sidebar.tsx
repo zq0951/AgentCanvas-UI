@@ -18,6 +18,7 @@ export default function Sidebar() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<any | null>(null);
   const { sessionId, setSessionId, clearCanvas, autoLayout } = useCanvas();
 
   const refreshSessions = async () => {
@@ -40,6 +41,17 @@ export default function Sidebar() {
   const handleClearBoard = () => {
     clearCanvas();
     setShowClearConfirm(false);
+  };
+
+  const handleDeleteSession = async () => {
+    if (!sessionToDelete) return;
+    const db = await (await import('@/lib/db')).getDB();
+    if (db) {
+      await db.delete('sessions', sessionToDelete.id);
+      if (sessionId === sessionToDelete.id) setSessionId(null);
+      refreshSessions();
+      setSessionToDelete(null);
+    }
   };
 
   return (
@@ -68,6 +80,32 @@ export default function Sidebar() {
         }
       >
         This will permanently delete all nodes and connections on the current board. You cannot undo this action. Proceed with caution.
+      </Modal>
+
+      {/* Individual Session Delete Modal */}
+      <Modal 
+        isOpen={!!sessionToDelete} 
+        onClose={() => setSessionToDelete(null)}
+        title="Discard Archive?"
+        type="danger"
+        footer={
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setSessionToDelete(null)}
+              className="px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+            >
+              Keep
+            </button>
+            <button 
+              onClick={handleDeleteSession}
+              className="px-6 py-3 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-95"
+            >
+              Discard
+            </button>
+          </div>
+        }
+      >
+        You are about to permanently delete <span className="font-black text-indigo-600">"{sessionToDelete?.title || 'Draft Canvas'}"</span>. This action cannot be undone.
       </Modal>
 
       {!isOpen && (
@@ -121,14 +159,9 @@ export default function Sidebar() {
               </button>
               <button 
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.stopPropagation();
-                  const db = await (await import('@/lib/db')).getDB();
-                  if (db) {
-                    await db.delete('sessions', s.id);
-                    if (sessionId === s.id) setSessionId(null);
-                    refreshSessions();
-                  }
+                  setSessionToDelete(s);
                 }}
               >
                 <Trash2 size={14} />
